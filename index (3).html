@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCAddon Extractor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════
+   TOKENS
+═══════════════════════════════════════════ */
+:root {
+  --bg0: #08090e;
+  --bg1: #0d0f18;
+  --bg2: #13162200;
+  --panel: #0f1120;
+  --panel2: #161928;
+  --line: rgba(255,255,255,0.06);
+  --line2: rgba(255,255,255,0.11);
+
+  --cyan: #00e5ff;
+  --cyan-d: #00b8d4;
+  --cyan-glow: rgba(0,229,255,0.18);
+  --amber: #ffab40;
+  --amber-d: #ff6d00;
+  --amber-glow: rgba(255,171,64,0.18);
+  --green: #00e676;
+  --red: #ff5252;
+
+  --txt: #dde3f5;
+  --txt2: #5a6180;
+  --txt3: #3a4060;
+
+  --mono: 'Space Mono', monospace;
+  --sans: 'Syne', sans-serif;
+
+  --r: 14px;
+  --r2: 10px;
+}
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg0);
+  font-family: var(--sans);
+  color: var(--txt);
+  min-height: 100vh;
+  padding-bottom: 80px;
+  overflow-x: hidden;
+}
+
+/* ═══════════ BG FX ═══════════ */
+.bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* scanlines */
+.bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.08) 2px,
+    rgba(0,0,0,0.08) 4px
+  );
+  z-index: 2;
+}
+
+/* grid */
+.bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 80% at 50% 20%, black 30%, transparent 100%);
+}
+
+.glow-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.12;
+  animation: pulse 12s ease-in-out infinite alternate;
+}
+.glow-blob:nth-child(1) {
+  width: 700px; height: 700px;
+  background: var(--cyan);
+  top: -250px; left: -200px;
+}
+.glow-blob:nth-child(2) {
+  width: 500px; height: 500px;
+  background: #5c6bc0;
+  bottom: 0; right: -100px;
+  animation-delay: -6s;
+}
+@keyframes pulse {
+  0%   { transform: scale(1)   translate(0,0); }
+  100% { transform: scale(1.1) translate(20px,30px); }
+}
+
+/* ═══════════ LAYOUT ═══════════ */
+.shell {
+  position: relative;
+  z-index: 1;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 56px 24px 0;
+}
+
+/* ═══════════ HEADER ═══════════ */
+header {
+  margin-bottom: 52px;
+  animation: rise 0.8s cubic-bezier(.16,1,.3,1) both;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.brand-icon {
+  position: relative;
+  width: 54px; height: 54px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6em;
+}
+.brand-icon::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--cyan);
+  border-radius: 12px;
+  box-shadow: 0 0 20px var(--cyan-glow), inset 0 0 20px var(--cyan-glow);
+  animation: blink-border 4s ease-in-out infinite;
+}
+@keyframes blink-border {
+  0%,100% { opacity:1; }
+  50%      { opacity:0.5; }
+}
+
+h1 {
+  font-size: clamp(1.7em, 4vw, 2.6em);
+  font-weight: 800;
+  letter-spacing: -1px;
+  line-height: 1;
+  color: var(--txt);
+}
+h1 em {
+  font-style: normal;
+  color: var(--cyan);
+  text-shadow: 0 0 30px var(--cyan-glow);
+}
+
+.tagline {
+  color: var(--txt2);
+  font-size: 0.88em;
+  font-family: var(--mono);
+  margin-top: 6px;
+  padding-left: 2px;
+}
+.tagline::before { content: '// '; opacity:0.5; }
+
+.ext-chips {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.chip {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 0.75em;
+  background: rgba(0,229,255,0.07);
+  border: 1px solid rgba(0,229,255,0.2);
+  color: var(--cyan);
+  letter-spacing: 0.5px;
+}
+
+/* ═══════════ DROP ZONE ═══════════ */
+.dropzone {
+  position: relative;
+  border-radius: var(--r);
+  border: 1.5px dashed var(--line2);
+  background: var(--panel);
+  padding: 52px 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.3s, background 0.3s, transform 0.3s;
+  overflow: hidden;
+  margin-bottom: 36px;
+  animation: rise 0.8s cubic-bezier(.16,1,.3,1) 0.1s both;
+}
+
+/* corner accents */
+.dropzone::before, .dropzone::after {
+  content: '';
+  position: absolute;
+  width: 20px; height: 20px;
+  border-color: var(--cyan);
+  border-style: solid;
+  opacity: 0.4;
+  transition: opacity 0.3s;
+}
+.dropzone::before { top:12px; left:12px; border-width: 2px 0 0 2px; border-radius: 4px 0 0 0; }
+.dropzone::after  { bottom:12px; right:12px; border-width: 0 2px 2px 0; border-radius: 0 0 4px 0; }
+
+.dropzone:hover, .dropzone.over {
+  border-color: var(--cyan);
+  background: rgba(0,229,255,0.04);
+  transform: translateY(-3px);
+}
+.dropzone:hover::before, .dropzone:hover::after,
+.dropzone.over::before, .dropzone.over::after { opacity: 1; }
+
+/* inner glow on hover */
+.dropzone-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 60% 50% at 50% 0%, rgba(0,229,255,0.1), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+.dropzone:hover .dropzone-glow, .dropzone.over .dropzone-glow { opacity: 1; }
+
+.drop-icon {
+  font-size: 2.8em;
+  display: block;
+  margin-bottom: 16px;
+  animation: float 5s ease-in-out infinite;
+  filter: drop-shadow(0 0 12px rgba(0,229,255,0.4));
+}
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+
+.drop-main {
+  font-size: 1.05em;
+  font-weight: 700;
+  color: var(--txt);
+  margin-bottom: 8px;
+}
+.drop-sub {
+  font-size: 0.82em;
+  color: var(--txt2);
+  font-family: var(--mono);
+}
+
+#fileInput {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 0;
+}
+
+/* ═══════════ LOADER ═══════════ */
+.loader {
+  display: none;
+  text-align: center;
+  padding: 48px 0;
+}
+.loader-track {
+  width: 200px;
+  height: 2px;
+  background: var(--line2);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+  overflow: hidden;
+}
+.loader-bar {
+  height: 100%;
+  width: 40%;
+  background: var(--cyan);
+  border-radius: 2px;
+  box-shadow: 0 0 12px var(--cyan);
+  animation: scan 1.2s ease-in-out infinite;
+}
+@keyframes scan {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+.loader-txt {
+  font-family: var(--mono);
+  font-size: 0.78em;
+  color: var(--cyan);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* ═══════════ OUTPUT ═══════════ */
+#output { display: flex; flex-direction: column; gap: 24px; }
+
+/* ═══════════ FILE SECTION ═══════════ */
+.file-section {
+  animation: rise 0.5s cubic-bezier(.16,1,.3,1) both;
+}
+
+.file-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 0.72em;
+  color: var(--txt2);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+.file-label-dot {
+  width: 6px; height: 6px;
+  background: var(--cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--cyan);
+  flex-shrink: 0;
+  animation: blink-border 2s ease-in-out infinite;
+}
+
+/* copy-all */
+.copy-all {
+  width: 100%;
+  padding: 11px 18px;
+  margin-bottom: 10px;
+  background: transparent;
+  border: 1px solid var(--line2);
+  border-radius: var(--r2);
+  color: var(--txt2);
+  font-family: var(--mono);
+  font-size: 0.76em;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.25s ease;
+}
+.copy-all:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(0,229,255,0.05);
+}
+.copy-all.ok { border-color: var(--green); color: var(--green); background: rgba(0,230,118,0.05); }
+
+/* ═══════════ PACK CARD ═══════════ */
+.pack-card {
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+  overflow: hidden;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  margin-bottom: 10px;
+}
+.pack-card:hover { transform: translateY(-2px); }
+
+.pack-card.is-rp {
+  border-color: rgba(0,229,255,0.2);
+  box-shadow: 0 4px 24px rgba(0,229,255,0.07);
+}
+.pack-card.is-rp:hover { box-shadow: 0 8px 32px rgba(0,229,255,0.15); }
+
+.pack-card.is-bp {
+  border-color: rgba(255,171,64,0.2);
+  box-shadow: 0 4px 24px rgba(255,171,64,0.07);
+}
+.pack-card.is-bp:hover { box-shadow: 0 8px 32px rgba(255,171,64,0.15); }
+
+/* top stripe */
+.card-stripe {
+  height: 2px;
+}
+.is-rp  .card-stripe { background: linear-gradient(90deg, var(--cyan), transparent 70%); }
+.is-bp  .card-stripe { background: linear-gradient(90deg, var(--amber), transparent 70%); }
+.is-unk .card-stripe { background: linear-gradient(90deg, #5a6180, transparent 70%); }
+
+.card-body { padding: 20px 22px; }
+
+/* top row: icon + name + badges */
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.pack-icon {
+  width: 42px; height: 42px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.25em;
+  flex-shrink: 0;
+}
+.is-rp  .pack-icon { background: rgba(0,229,255,0.1); }
+.is-bp  .pack-icon { background: rgba(255,171,64,0.1); }
+.is-unk .pack-icon { background: rgba(90,97,128,0.15); }
+
+.pack-info { flex: 1; min-width: 0; }
+
+.pack-name {
+  font-weight: 700;
+  font-size: 0.98em;
+  color: var(--txt);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 6px;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.badge {
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.68em;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+.b-rp  { background: rgba(0,229,255,0.1);  color: var(--cyan);  border: 1px solid rgba(0,229,255,0.3); }
+.b-bp  { background: rgba(255,171,64,0.1); color: var(--amber); border: 1px solid rgba(255,171,64,0.3); }
+.b-unk { background: rgba(90,97,128,0.15); color: #8a94b8;      border: 1px solid rgba(90,97,128,0.3); }
+.b-obf { background: rgba(255,82,82,0.08); color: #ff8a80;      border: 1px solid rgba(255,82,82,0.2); font-size: 0.64em; }
+
+/* path */
+.card-path {
+  font-family: var(--mono);
+  font-size: 0.68em;
+  color: var(--txt3);
+  margin-bottom: 14px;
+  padding: 6px 10px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* plain one-line output */
+.plain-out {
+  font-family: var(--mono);
+  font-size: 0.78em;
+  color: var(--txt);
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 13px;
+  margin-bottom: 10px;
+  word-break: break-all;
+  line-height: 1.6;
+  user-select: all;
+}
+
+/* drag handle */
+.drag-handle {
+  cursor: grab;
+  color: var(--txt3);
+  font-size: 1em;
+  padding: 0 2px;
+  flex-shrink: 0;
+  line-height: 1;
+  user-select: none;
+  transition: color 0.2s;
+}
+.drag-handle:hover { color: var(--txt2); }
+.drag-handle:active { cursor: grabbing; }
+
+/* drag states */
+.pack-card.dragging {
+  opacity: 0.4;
+  transform: scale(0.98);
+}
+.pack-card.drag-over {
+  border-color: var(--cyan) !important;
+  box-shadow: 0 0 0 1px var(--cyan), 0 8px 24px var(--cyan-glow) !important;
+}
+
+/* copy btn */
+.copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  padding: 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line2);
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 0.74em;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--txt2);
+}
+.is-rp  .copy-btn { border-color: rgba(0,229,255,0.2); color: rgba(0,229,255,0.7); }
+.is-bp  .copy-btn { border-color: rgba(255,171,64,0.2); color: rgba(255,171,64,0.7); }
+.is-rp  .copy-btn:hover { background: rgba(0,229,255,0.08); color: var(--cyan); border-color: var(--cyan); }
+.is-bp  .copy-btn:hover { background: rgba(255,171,64,0.08); color: var(--amber); border-color: var(--amber); }
+.is-unk .copy-btn:hover { background: var(--panel2); color: var(--txt); }
+
+.copy-btn.ok {
+  border-color: rgba(0,230,118,0.4) !important;
+  color: var(--green) !important;
+  background: rgba(0,230,118,0.06) !important;
+}
+.copy-btn.err {
+  border-color: rgba(255,82,82,0.4) !important;
+  color: var(--red) !important;
+  background: rgba(255,82,82,0.06) !important;
+}
+
+/* error */
+.err-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px;
+  border-radius: var(--r2);
+  background: rgba(255,82,82,0.07);
+  border: 1px solid rgba(255,82,82,0.2);
+  color: #ff8a80;
+  font-size: 0.85em;
+  font-family: var(--mono);
+}
+
+/* ═══════════ TABS ═══════════ */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 28px;
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 9px 16px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--txt2);
+  font-family: var(--mono);
+  font-size: 0.75em;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+.tab-btn:hover { color: var(--txt); background: var(--panel2); }
+.tab-btn.active {
+  background: rgba(0,229,255,0.1);
+  color: var(--cyan);
+  border: 1px solid rgba(0,229,255,0.2);
+}
+.tab-btn.active.log-tab {
+  background: rgba(255,171,64,0.08);
+  color: var(--amber);
+  border-color: rgba(255,171,64,0.2);
+}
+
+.tab-badge {
+  background: rgba(0,229,255,0.15);
+  color: var(--cyan);
+  font-size: 0.85em;
+  padding: 1px 7px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+.log-tab .tab-badge {
+  background: rgba(255,171,64,0.15);
+  color: var(--amber);
+}
+
+.page { display: none; }
+.page.active { display: block; animation: rise 0.3s ease; }
+
+/* ═══════════ DEBUG PAGE ═══════════ */
+.debug-page-wrap {
+  background: #060810;
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+
+.debug-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 16px;
+  background: rgba(255,171,64,0.04);
+  border-bottom: 1px solid var(--line2);
+}
+
+.debug-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 0.72em;
+  color: var(--txt2);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.debug-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber);
+  animation: blink-border 1s ease-in-out infinite;
+  flex-shrink: 0;
+}
+.debug-dot.idle {
+  background: var(--txt3);
+  box-shadow: none;
+  animation: none;
+}
+
+.debug-toolbar-btns { display: flex; gap: 8px; }
+
+.debug-btn {
+  padding: 4px 12px;
+  border-radius: 5px;
+  border: 1px solid var(--line2);
+  background: transparent;
+  color: var(--txt2);
+  font-family: var(--mono);
+  font-size: 0.68em;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.5px;
+}
+.debug-btn:hover { background: var(--panel2); color: var(--txt); }
+
+#debug-log {
+  padding: 14px 18px;
+  font-family: var(--mono);
+  font-size: 0.73em;
+  line-height: 1.9;
+  min-height: 400px;
+  max-height: 600px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+#debug-log::-webkit-scrollbar { width: 4px; }
+#debug-log::-webkit-scrollbar-track { background: transparent; }
+#debug-log::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 2px; }
+
+.log-line { display: flex; gap: 10px; }
+.log-ts   { color: var(--txt3); flex-shrink: 0; user-select: none; }
+.log-msg  { flex: 1; word-break: break-all; }
+
+.log-info  .log-msg { color: #475569; }
+.log-open  .log-msg { color: #38bdf8; }
+.log-found .log-msg { color: var(--green); }
+.log-skip  .log-msg { color: var(--txt3); }
+.log-warn  .log-msg { color: var(--amber); }
+.log-err   .log-msg { color: var(--red); }
+.log-done  .log-msg { color: var(--cyan); font-weight: 700; }
+
+.log-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 12px;
+  color: var(--txt3);
+  font-family: var(--mono);
+  font-size: 0.8em;
+}
+.log-empty-icon { font-size: 2.5em; opacity: 0.3; }
+
+/* ═══════════ RESPONSIVE ═══════════ */
+#toast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 12px 22px;
+  font-family: var(--mono);
+  font-size: 0.8em;
+  color: var(--txt);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  transition: transform 0.35s cubic-bezier(.16,1,.3,1), opacity 0.35s;
+  opacity: 0;
+  z-index: 999;
+  pointer-events: none;
+  white-space: nowrap;
+}
+#toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+#toast.ok  { border-color: rgba(0,230,118,0.4); color: var(--green); }
+#toast.err { border-color: rgba(255,82,82,0.4); color: var(--red); }
+
+/* ═══════════ ANIM ═══════════ */
+@keyframes rise {
+  from { opacity:0; transform:translateY(18px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+/* ═══════════ RESPONSIVE ═══════════ */
+@media(max-width:600px) {
+  .shell { padding: 36px 16px 0; }
+  h1 { font-size: 1.7em; }
+  .dropzone { padding: 40px 20px; }
+}
+</style>
+</head>
+<body>
+
+<div class="bg">
+  <div class="glow-blob"></div>
+  <div class="glow-blob"></div>
+</div>
+
+<div class="shell">
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">⚡</div>
+      <h1>MC<em>Addon</em><br>Extractor</h1>
+    </div>
+    <div class="tagline">ดึง UUID + Version จาก manifest.json — รองรับไฟล์เข้ารหัส</div>
+    <div class="ext-chips">
+      <span class="chip">.mcaddon</span>
+      <span class="chip">.mcpack</span>
+      <span class="chip">.zip</span>
+      <span class="chip" style="opacity:0.6">ทุกนามสกุล</span>
+    </div>
+  </header>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tab-extractor" onclick="switchTab('extractor')">
+      ⚡ Extractor
+      <span class="tab-badge" id="badge-count" style="display:none">0</span>
+    </button>
+    <button class="tab-btn log-tab" id="tab-debug" onclick="switchTab('debug')">
+      🖥 Debug Log
+      <span class="tab-badge" id="badge-log">0</span>
+    </button>
+  </div>
+
+  <!-- Page: Extractor -->
+  <div class="page active" id="page-extractor">
+    <div class="dropzone" id="dz">
+      <div class="dropzone-glow"></div>
+      <span class="drop-icon">📦</span>
+      <div class="drop-main">วางไฟล์ที่นี่ หรือคลิกเพื่อเลือก</div>
+      <div class="drop-sub">รองรับทุกไฟล์ — เจาะลึกหา manifest.json ทุกชั้น</div>
+      <input type="file" id="fileInput" multiple>
+    </div>
+    <div class="loader" id="loader">
+      <div class="loader-track"><div class="loader-bar"></div></div>
+      <div class="loader-txt">กำลังอ่าน manifest.json...</div>
+    </div>
+    <div id="output"></div>
+  </div>
+
+  <!-- Page: Debug -->
+  <div class="page" id="page-debug">
+    <div class="debug-page-wrap">
+      <div class="debug-toolbar">
+        <div class="debug-status">
+          <span class="debug-dot idle" id="debug-dot"></span>
+          <span id="debug-status-txt">รอไฟล์...</span>
+        </div>
+        <div class="debug-toolbar-btns">
+          <button class="debug-btn" onclick="clearLog()">CLEAR</button>
+          <button class="debug-btn" onclick="copyDebugLog()">COPY LOG</button>
+        </div>
+      </div>
+      <div id="debug-log">
+        <div class="log-empty" id="log-empty">
+          <span class="log-empty-icon">🖥</span>
+          <span>ยังไม่มี log — ลองเปิดไฟล์ก่อนครับ</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════
+   CLIPBOARD  — fallback สำหรับ iframe / http
+══════════════════════════════════════ */
+async function copyToClipboard(text) {
+  // วิธี 1: Clipboard API (ใช้ได้บน https + user gesture)
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch(e) { /* fall through */ }
+  }
+  // วิธี 2: execCommand fallback (รองรับใน iframe, http)
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch(e) {
+    document.body.removeChild(ta);
+    return false;
+  }
+}
+
+/* ══════════════════════════════════════
+   TABS
+══════════════════════════════════════ */
+function switchTab(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+/* ══════════════════════════════════════
+   DEBUG LOGGER
+══════════════════════════════════════ */
+const debugLog    = document.getElementById('debug-log');
+const debugDot    = document.getElementById('debug-dot');
+const debugStatus = document.getElementById('debug-status-txt');
+const badgeLog    = document.getElementById('badge-log');
+const badgeCount  = document.getElementById('badge-count');
+const logEmpty    = document.getElementById('log-empty');
+let   _t0         = 0;
+let   _logCount   = 0;
+
+function dbg(msg, type='info') {
+  if (logEmpty) logEmpty.style.display = 'none';
+  const ms   = _t0 ? Date.now() - _t0 : 0;
+  const ts   = `+${ms}ms`.padStart(7);
+  const line = document.createElement('div');
+  line.className = `log-line log-${type}`;
+  line.innerHTML = `<span class="log-ts">[${ts}]</span><span class="log-msg">${esc(msg)}</span>`;
+  debugLog.appendChild(line);
+  debugLog.scrollTop = debugLog.scrollHeight;
+  _logCount++;
+  badgeLog.textContent = _logCount;
+}
+
+function dbgStart() {
+  _t0 = Date.now();
+  debugDot.className = 'debug-dot';
+  debugStatus.textContent = 'กำลังประมวลผล...';
+  dbg('━━━ SESSION START ━━━', 'done');
+}
+
+function dbgEnd(found) {
+  dbg(`━━━ DONE — found ${found} manifest(s) ━━━`, 'done');
+  debugDot.className = 'debug-dot idle';
+  debugStatus.textContent = `เสร็จ — พบ ${found} manifest`;
+  badgeCount.style.display = 'inline';
+  badgeCount.textContent   = found;
+}
+
+function clearLog() {
+  debugLog.innerHTML = '';
+  if (logEmpty) { logEmpty.style.display = ''; debugLog.appendChild(logEmpty); }
+  _logCount = 0;
+  badgeLog.textContent = 0;
+}
+
+function copyDebugLog() {
+  const txt = [...debugLog.querySelectorAll('.log-line')]
+    .map(l => l.textContent.trim()).join('\n');
+  copyToClipboard(txt);
+  showToast('✓ คัดลอก log แล้ว', 'ok');
+}
+
+/* ══════════════════════════════════════
+   TOAST
+══════════════════════════════════════ */
+let toastTimer;
+function showToast(msg, type='ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, 2200);
+}
+
+/* ══════════════════════════════════════
+   FILE INPUT + DRAG
+══════════════════════════════════════ */
+const dz        = document.getElementById('dz');
+const fileInput = document.getElementById('fileInput');
+const loader    = document.getElementById('loader');
+const output    = document.getElementById('output');
+
+const ARCHIVE_EXTS = ['.mcaddon','.mcpack','.zip','.rar','.7z','.tar','.gz','.apk','.jar','.xapk'];
+
+function isLikelyArchive(name) {
+  const n = name.toLowerCase();
+  return ARCHIVE_EXTS.some(e => n.endsWith(e));
+}
+
+fileInput.addEventListener('change', () => {
+  const files = [...fileInput.files];
+  if (!files.length) return;
+  run(files);
+});
+
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', ()  => dz.classList.remove('over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('over');
+  const files = [...e.dataTransfer.files];
+  if (!files.length) return;
+  run(files);
+});
+
+async function run(files) {
+  output.innerHTML = '';
+  SEEN_MANIFESTS.clear();
+  dbgStart();
+  dbg(`รับไฟล์ ${files.length} ไฟล์: ${files.map(f=>f.name).join(', ')}`, 'info');
+  loader.style.display = 'block';
+  let total = 0;
+  for (const f of files) total += await processFile(f);
+  loader.style.display = 'none';
+  dbgEnd(total);
+}
+
+/* ══════════════════════════════════════
+   EXTRACT header{} เท่านั้น
+══════════════════════════════════════ */
+function extractHeader(text) {
+  // ── ปกติ ──
+  try {
+    const j = JSON.parse(text);
+    const h = j?.header;
+    if (h?.uuid && Array.isArray(h?.version)) {
+      return { uuid: h.uuid, version: h.version, name: h.name||'', modules: j.modules||[], obf: false };
+    }
+  } catch(_) {}
+
+  // ── obfuscated: หา block "header": { ... } ──
+  // จับ content ใน { } หลัง "header" : (nested-safe ด้วย counting)
+  const hIdx = text.search(/"header"\s*:\s*\{/);
+  let scope = text;
+  if (hIdx !== -1) {
+    const start = text.indexOf('{', hIdx + '"header"'.length);
+    let depth = 0, end = start;
+    for (; end < text.length; end++) {
+      if (text[end] === '{') depth++;
+      else if (text[end] === '}') { depth--; if (depth === 0) break; }
+    }
+    scope = text.slice(start, end + 1);
+  }
+
+  const uuidRx = /"uuid"\s*:\s*"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"/;
+  const verRx  = /"version"\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]/;
+  const nameRx = /"name"\s*:\s*"([^"]+)"/;
+
+  const uM = scope.match(uuidRx);
+  const vM = scope.match(verRx);
+  if (!uM || !vM) return null;
+
+  // modules ดึงจากทั้งไฟล์เพื่อตรวจ RP/BP
+  const modTypes = [...text.matchAll(/"type"\s*:\s*"([^"]+)"/g)].map(m => m[1]);
+  return {
+    uuid: uM[1],
+    version: [+vM[1], +vM[2], +vM[3]],
+    name: (scope.match(nameRx)||[])[1] || '',
+    modules: modTypes.map(t => ({ type: t })),
+    obf: true
+  };
+}
+
+function detectType(fields, path) {
+  const types = fields.modules.map(m => (m.type||'').toLowerCase());
+  if (types.some(t => ['resources','resource'].includes(t)))                          return 'rp';
+  if (types.some(t => ['data','script','javascript','world_template'].includes(t)))   return 'bp';
+  const p = path.toLowerCase();
+  if (/\brp\b|resource.?pack|textures|skins/.test(p)) return 'rp';
+  if (/\bbp\b|behav|behavior.?pack|scripts/.test(p))  return 'bp';
+  return 'unk';
+}
+
+// ── เจาะทุก entry ลองเปิดเป็น zip ทุกชั้น ──
+const SEEN_MANIFESTS = new Set(); // กัน duplicate ใน session
+
+async function gatherManifests(zip, prefix='', depth=0) {
+  if (depth > 8) { dbg(`  ⚠ depth limit reached at: ${prefix}`, 'warn'); return []; }
+  const res = [];
+  const indent = '  '.repeat(depth + 1);
+
+  for (const [, entry] of Object.entries(zip.files)) {
+    if (entry.dir) continue;
+    const nameLow = entry.name.toLowerCase();
+
+    // ── manifest.json ──
+    if (nameLow.endsWith('manifest.json')) {
+      dbg(`${indent}📄 manifest พบ: ${prefix}${entry.name}`, 'open');
+      const text   = await entry.async('string');
+      const fields = extractHeader(text);
+      if (fields) {
+        const fullPath = prefix + entry.name;
+        const key = fields.uuid + '|' + fullPath;
+        if (!SEEN_MANIFESTS.has(key)) {
+          SEEN_MANIFESTS.add(key);
+          dbg(`${indent}  ✓ UUID: ${fields.uuid} | v[${fields.version.join(',')}]${fields.obf?' [obf]':''}`, 'found');
+          res.push({ fields, typeKey: detectType(fields, fullPath), path: fullPath });
+        } else {
+          dbg(`${indent}  ↷ ซ้ำ — ข้าม`, 'skip');
+        }
+      } else {
+        dbg(`${indent}  ✗ ดึง header ไม่ได้ (ไม่มี uuid/version)`, 'warn');
+      }
+      continue;
+    }
+
+    // ── ลองเปิดทุก entry เป็น zip (ไม่สนนามสกุล) ──
+    if (entry._data && (entry._data.uncompressedSize < 22)) continue;
+
+    try {
+      const buf = await entry.async('uint8array');
+      if (buf[0] === 0x50 && buf[1] === 0x4B && buf[2] === 0x03 && buf[3] === 0x04) {
+        dbg(`${indent}📦 เจาะ nested: ${entry.name} (depth ${depth+1})`, 'open');
+        const inner = await JSZip.loadAsync(buf);
+        const sub   = await gatherManifests(inner, prefix + entry.name + ' → ', depth + 1);
+        if (sub.length) dbg(`${indent}  ↳ พบ ${sub.length} manifest ใน nested`, 'found');
+        res.push(...sub);
+      } else {
+        dbg(`${indent}  ⟳ ${entry.name} — ไม่ใช่ ZIP`, 'skip');
+      }
+    } catch(e) {
+      dbg(`${indent}  ✗ เปิด ${entry.name} ไม่ได้: ${e.message}`, 'warn');
+    }
+  }
+
+  const order = { rp:0, bp:1, unk:2 };
+  res.sort((a,b) => (order[a.typeKey]??2) - (order[b.typeKey]??2));
+  return res;
+}
+
+/* ══════════════════════════════════════
+   RENDER
+══════════════════════════════════════ */
+const TYPE_META = {
+  rp:  { label:'Resource Pack', icon:'🎨', cls:'is-rp', bc:'b-rp' },
+  bp:  { label:'Behavior Pack', icon:'⚙️', cls:'is-bp', bc:'b-bp' },
+  unk: { label:'Unknown',       icon:'❓', cls:'is-unk', bc:'b-unk' },
+};
+
+async function processFile(file) {
+  const sec = el('div', 'file-section');
+  const lbl = el('div', 'file-label');
+  lbl.innerHTML = `<span class="file-label-dot"></span>${esc(file.name)}`;
+  sec.appendChild(lbl);
+
+  dbg(`▶ ไฟล์: ${file.name} (${(file.size/1024).toFixed(1)} KB)`, 'open');
+
+  // ตรวจ ZIP magic bytes ก่อน
+  const header = await file.slice(0, 4).arrayBuffer();
+  const magic  = new Uint8Array(header);
+  if (!(magic[0]===0x50 && magic[1]===0x4B && magic[2]===0x03 && magic[3]===0x04)) {
+    dbg(`✗ ไม่ใช่ ZIP — magic: ${[...magic].map(b=>'0x'+b.toString(16).padStart(2,'0')).join(' ')}`, 'err');
+    sec.appendChild(errCard('ไม่ใช่ไฟล์ ZIP/Archive — ไม่สามารถเจาะอ่านได้'));
+    output.appendChild(sec);
+    return 0;
+  }
+
+  dbg(`✓ ZIP magic OK — กำลังเปิด...`, 'info');
+
+  try {
+    const zip       = await JSZip.loadAsync(file);
+    const entries   = Object.values(zip.files).filter(e => !e.dir);
+    dbg(`  entries: ${entries.length} ไฟล์ใน archive`, 'info');
+
+    const manifests = await gatherManifests(zip, '', 0);
+
+    if (!manifests.length) {
+      dbg(`✗ ไม่พบ manifest.json แม้แต่อันเดียว`, 'warn');
+      sec.appendChild(errCard('เจาะทุกชั้นแล้ว — ไม่พบ manifest.json ในไฟล์นี้'));
+      output.appendChild(sec);
+      return 0;
+    }
+
+    dbg(`✓ พบ manifest ${manifests.length} รายการ`, 'found');
+
+    if (manifests.length > 1) {
+      const btn = el('button', 'copy-all');
+      const initLines = manifests.map(m => buildPayloadLine(m.fields));
+      btn.dataset.payload = '[\n' + initLines.join(',\n') + '\n]';
+      btn.innerHTML = `<span>⌗</span> คัดลอกทั้งหมด (${manifests.length} packs)`;
+      btn.onclick = async () => {
+        const txt = btn.dataset.payload;
+        const ok  = await copyToClipboard(txt);
+        if (ok) {
+          btn.classList.add('ok'); btn.innerHTML = '✓ คัดลอกแล้ว';
+          showToast('✓ คัดลอกทั้งหมดแล้ว', 'ok');
+          setTimeout(() => {
+            btn.classList.remove('ok');
+            btn.innerHTML = `<span>⌗</span> คัดลอกทั้งหมด (${manifests.length} packs)`;
+          }, 2200);
+        } else { showToast('❌ คัดลอกไม่สำเร็จ', 'err'); }
+      };
+      sec.appendChild(btn);
+    }
+
+    for (const m of manifests) {
+      dbg(`  [${m.typeKey.toUpperCase()}] ${m.fields.name||'Unnamed'} — ${m.fields.uuid} v[${m.fields.version.join(',')}]${m.fields.obf?' 🔒':''}`, 'found');
+      sec.appendChild(makeCard(m));
+    }
+
+    output.appendChild(sec);
+    return manifests.length;
+
+  } catch(e) {
+    dbg(`✗ ERROR: ${e.message}`, 'err');
+    sec.appendChild(errCard('อ่านไฟล์ไม่ได้: ' + e.message));
+    output.appendChild(sec);
+    return 0;
+  }
+}
+
+function makeCard({ fields, typeKey, path }) {
+  const meta = TYPE_META[typeKey] || TYPE_META.unk;
+
+  const card = el('div', `pack-card ${meta.cls}`);
+  card.dataset.payload = buildPayloadLine(fields);
+
+  card.innerHTML = `
+    <div class="card-stripe"></div>
+    <div class="card-body">
+      <div class="card-head">
+        <span class="drag-handle" title="ลากเพื่อเรียงลำดับ">⠿</span>
+        <div class="pack-icon">${meta.icon}</div>
+        <div class="pack-info">
+          <div class="pack-name">${esc(fields.name || 'Unnamed Pack')}</div>
+          <div class="badges">
+            <span class="badge ${meta.bc}">${meta.label}</span>
+            ${fields.obf ? '<span class="badge b-obf">🔒 obfuscated</span>' : ''}
+          </div>
+        </div>
+      </div>
+      <div class="card-path">📄 ${esc(path)}</div>
+      <div class="plain-out">${esc(buildPayloadLine(fields))}</div>
+    </div>
+  `;
+
+  const body = card.querySelector('.card-body');
+  const btn  = el('button', 'copy-btn');
+  btn.innerHTML = '<span>⌘</span> คัดลอก';
+
+  const payloadLine = buildPayloadLine(fields);
+
+  btn.onclick = async () => {
+    const ok = await copyToClipboard(payloadLine);
+    if (ok) {
+      btn.classList.add('ok'); btn.innerHTML = '✓ คัดลอกแล้ว';
+      showToast('✓ คัดลอกแล้ว', 'ok');
+      setTimeout(() => { btn.classList.remove('ok'); btn.innerHTML = '<span>⌘</span> คัดลอก'; }, 2200);
+    } else {
+      btn.classList.add('err'); btn.innerHTML = '❌ คัดลอกไม่ได้';
+      showToast('❌ คัดลอกไม่สำเร็จ', 'err');
+      setTimeout(() => { btn.classList.remove('err'); btn.innerHTML = '<span>⌘</span> คัดลอก'; }, 2200);
+    }
+  };
+
+  body.appendChild(btn);
+
+  // ── drag to reorder (HTML5 drag) ──
+  card.draggable = true;
+  card.addEventListener('dragstart', e => {
+    e.dataTransfer.effectAllowed = 'move';
+    dragSrc = card;
+    setTimeout(() => card.classList.add('dragging'), 0);
+  });
+  card.addEventListener('dragend', () => {
+    card.classList.remove('dragging');
+    document.querySelectorAll('.pack-card').forEach(c => c.classList.remove('drag-over'));
+    refreshCopyAll(card.closest('.file-section'));
+  });
+  card.addEventListener('dragover', e => {
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    if (dragSrc && dragSrc !== card) card.classList.add('drag-over');
+  });
+  card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+  card.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    card.classList.remove('drag-over');
+    if (!dragSrc || dragSrc === card) return;
+    const parent = card.parentNode;
+    const cards  = [...parent.querySelectorAll('.pack-card')];
+    const srcIdx = cards.indexOf(dragSrc);
+    const tgtIdx = cards.indexOf(card);
+    if (srcIdx < tgtIdx) parent.insertBefore(dragSrc, card.nextSibling);
+    else                 parent.insertBefore(dragSrc, card);
+    refreshCopyAll(parent);
+  });
+
+  return card;
+}
+
+// single-line format
+function buildPayloadLine(fields) {
+  return `{"pack id": "${fields.uuid}", "version": [${fields.version.join(', ')}]}`;
+}
+
+// ── drag state ──
+let dragSrc = null;
+
+// rebuild copy-all text from current DOM order
+function refreshCopyAll(sec) {
+  if (!sec) return;
+  const btn = sec.querySelector('.copy-all');
+  if (!btn) return;
+  const cards = [...sec.querySelectorAll('.pack-card')];
+  const lines = cards.map(c => c.dataset.payload);
+  btn.dataset.payload = '[\n' + lines.join(',\n') + '\n]';
+}
+
+/* ── helpers ── */
+function el(tag, cls='') {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  return e;
+}
+function errCard(msg) {
+  const d = el('div','err-card');
+  d.innerHTML = `<span>⚠</span> ${esc(msg)}`;
+  return d;
+}
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
